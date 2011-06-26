@@ -62,7 +62,7 @@ namespace BlobClient
 					Set<string> files = blobClient.ListFiles(folder);
 					foreach (string file in files)
 					{
-						Trace.Assert(_fileNameRegex.IsMatch(file));
+						// Trace.Assert(_fileNameRegex.IsMatch(file));
 						Console.WriteLine("    {0}", file);
 					}
 					Console.WriteLine("{0} files listed", files.Count);
