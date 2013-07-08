@@ -81,6 +81,44 @@
 			exit();
 		}
 	}	
+	else if ($Action == "Rename")
+	{
+		// Rename the selected blob file (and delete related cache files) - this code is not specific to dcupload
+		
+		$File = MapFileName($File);
+		$originalFile = sprintf("%s/%s", $originalsFolder, $File);
+		if (!file_exists($originalFile))
+		{
+			printf("203 File '%s' does not exist", $originalFile);
+			exit();
+		}
+		else if (!isset($_REQUEST['NewFile']) || $_REQUEST['NewFile'] == "")
+		{
+			print("204 NewFile argument is required");
+			exit();
+		}
+		else
+		{
+			$NewFile = $_REQUEST['NewFile'];
+			$NewFile = MapFileName($NewFile);
+			$newDirCharsFolder  = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName(pathinfo($NewFile)) : "";	
+			$newOriginalsFolder = sprintf("%s/%s/%s/originals%s", $FILES_ROOT, $AccountName, $Folder, $newDirCharsFolder);
+			$newOriginalFile = sprintf("%s/%s", $newOriginalsFolder, $NewFile);
+			
+			DeleteCacheFiles($FILES_ROOT, $AccountName, $Folder, $File);
+			
+			@mkdir($newOriginalsFolder, 0777, true);
+			
+			if (! @rename($originalFile, $newOriginalFile))
+			{
+				printf("205 Cannot rename '%s' as '%s'", $originalFile, $newOriginalFile);
+				exit();
+			}
+			
+			printf("200 File '%s' was renamed as '%s'", $originalFile, $newOriginalFile);
+			exit();
+		}
+	}	
 	else if ($Action == "Update")
 	{
 		// Handle the .jpg file uploaded by dcupload
@@ -228,6 +266,29 @@ function DeleteFiles($filesRoot, $hostName, $folder, $file)
 	$originalFile    = sprintf("%s/%s/%s/originals%s/%s", $filesRoot, $hostName, $folder, $dirCharsFolder, $file);
 	
 	@unlink($originalFile);
+	
+	$cacheFolders = sprintf("%s/%s/%s/cache", $filesRoot, $hostName, $folder);
+	
+	if ($handle = @opendir($cacheFolders)) 
+	{
+		while (false !== ($cacheFolder = readdir($handle))) 
+		{
+			if ($cacheFolder != "." && $cacheFolder != "..") 
+			{
+				$filePath = sprintf("%s/%s%s/%s", $cacheFolders, $cacheFolder, $dirCharsFolder, $file);
+				@unlink($filePath);
+			}
+		}
+		closedir($handle);
+	}
+}
+
+function DeleteCacheFiles($filesRoot, $hostName, $folder, $file)
+{
+	global $FILES_DIR_CHARS;
+	
+	$dirCharsFolder  = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName(pathinfo($file)) : "";	
+	$originalFile    = sprintf("%s/%s/%s/originals%s/%s", $filesRoot, $hostName, $folder, $dirCharsFolder, $file);
 	
 	$cacheFolders = sprintf("%s/%s/%s/cache", $filesRoot, $hostName, $folder);
 	

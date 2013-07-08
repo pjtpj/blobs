@@ -14,7 +14,7 @@ namespace BlobClient
 		static void Usage()
 		{
 			Console.WriteLine("Usage: Hostname Password command folder [file1 file2 ...]");
-			Console.WriteLine("Command can be 'exists', 'delete', 'upload' or 'list'");
+			Console.WriteLine("Command can be 'exists', 'delete', 'rename', 'upload' or 'list'");
 		}
 
 		static string _regexFormats = @"gif|jpg|png|pdf|swf"; // Copied from ImageFormats.cs
@@ -66,6 +66,19 @@ namespace BlobClient
 						Console.WriteLine("    {0}", file);
 					}
 					Console.WriteLine("{0} files listed", files.Count);
+					return;
+				}
+
+				if (command == "rename")
+				{
+					if (args.Length != 6)
+					{
+						Usage();
+						return;
+					}
+
+					blobClient.RenameFile(folder, args[4], args[5]);
+					Console.WriteLine("{0} deleted: {1}", args[4], blobClient.Response);
 					return;
 				}
 

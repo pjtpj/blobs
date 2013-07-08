@@ -1,6 +1,6 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 9.00
-# Visual Studio 2005
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlobClient", "BlobClient.csproj", "{29C576DB-FAEF-495B-87E7-6CD92E583E48}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CoreLibrary", "..\..\CoreLibrary\CoreLibrary.csproj", "{FEBBC7DB-8011-414D-A825-09694F7EA433}"
