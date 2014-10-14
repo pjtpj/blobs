@@ -78,7 +78,7 @@ namespace BlobClient
 					}
 
 					blobClient.RenameFile(folder, args[4], args[5]);
-					Console.WriteLine("{0} deleted: {1}", args[4], blobClient.Response);
+					Console.WriteLine("{0} renamed: {1}", args[4], blobClient.Response);
 					return;
 				}
 

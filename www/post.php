@@ -206,6 +206,7 @@
 		// like this:
 		//  find /home/biz/blobs/files/listingimages.t3city.com/Photos/originals/ -size 0 -type f -print0 | xargs -0 -I {} mv {} /home/biz/blobs/files/listingimages.t3city.com/Photos/tmp/
 		
+		set_time_limit(3600);
 		$fileCount = 0;
 		$originalsFolder = sprintf("%s/%s/%s/originals", $FILES_ROOT, $AccountName, $Folder);
 		

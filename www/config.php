@@ -3,7 +3,7 @@
 	// Copyright (C) 2008 Teztech, Inc.
 	// All Rights Reserved
 
-	$DB_SERVER   = "localhost";
+	$DB_SERVER   = "mysql.teztech.com";
 	$DB_DATABASE = "blobs";
 	$DB_USERNAME = "blobs";
 	$DB_PASSWORD = "blobx2323pwd";
