@@ -30,3 +30,4 @@ bin-debug/
 bin-release/
 MSSCCPRJ.SCC
 files/
+www/config.php
