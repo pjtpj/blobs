@@ -1,9 +1,12 @@
 <?php
 
-	// Copyright (C) 2008 Teztech, Inc.
+	// Copyright (C) 2008-2015 Teztech, Inc.
 	// All Rights Reserved
 	
 	require_once("config.php");
+	require '../vendor/autoload.php';
+
+	use Aws\S3\S3Client;
 	
 	if (!isset($_REQUEST['Folder']) ||!isset($_REQUEST['File']))
 		NotFound('File not found');
@@ -25,94 +28,189 @@
 	$fileParts      = pathinfo($File);
 	$fileExtension  = strtolower($fileParts['extension']);
 	$dirCharsFolder = $FILES_DIR_CHARS > 0 ? GetFolderName($fileParts) . "/" : "";
-	$originalFile   = sprintf("%s/%s/%s/originals/%s%s", $FILES_ROOT, $AccountName, $Folder, $dirCharsFolder, $File);
 	
-	if ($fileExtension == "pdf")
+	if ($USE_S3)
 	{
-		if (!file_exists($originalFile))
-			NotFound('File not found');
-					
-		header("Content-type: application/pdf");
-		readfile($originalFile);
-		exit();
-	}
-	if ($fileExtension == "swf")
-	{
-		if (!file_exists($originalFile))
-			NotFound('File not found');
-					
-		header("Content-type: application/x-shockwave-flash");
-		readfile($originalFile);
-		exit();
-	}
-			
-	if (preg_match('/\-(\d+)x(\d+)/i', $fileParts['filename'], $matches))
-	{
-		$cxDest         = intval($matches[1]);
-		$cyDest         = intval($matches[2]);
-		$fileName       = substr($fileParts['filename'], 0, strlen($fileParts['filename']) - strlen($matches[0]));
-		$dirCharsFolder = $FILES_DIR_CHARS > 0 ? GetFolderName($fileName) . "/" : "";
+		$s3client        = S3Client::factory(array('key' => $AWS_KEY, 'secret' => $AWS_SECRET));
+		$originalFile    = sprintf("%s/%s/%s/originals/%s%s", $S3_ROOT, $AccountName, $Folder, $dirCharsFolder, $File);
+		$originalFileUrl = sprintf("%s/%s", $S3_URL, $originalFile);
 		
-		$originalFile = sprintf("%s/%s/%s/originals/%s%s.%s", $FILES_ROOT, $AccountName, $Folder, $dirCharsFolder, $fileName, $fileExtension);
-		if (!file_exists($originalFile))
+		if (preg_match('/\-(\d+)x(\d+)/i', $fileParts['filename'], $matches))
 		{
-			$fileName      = "default";
-			$fileExtension = "gif";
+			$cxDest         = intval($matches[1]);
+			$cyDest         = intval($matches[2]);
+			$fileName       = substr($fileParts['filename'], 0, strlen($fileParts['filename']) - strlen($matches[0]));
 			$dirCharsFolder = $FILES_DIR_CHARS > 0 ? GetFolderName($fileName) . "/" : "";
-			$originalFile = sprintf("%s/%s/%s/originals/%s%s.%s", $FILES_ROOT, $AccountName, $Folder, $dirCharsFolder, $fileName, $fileExtension);
+			$originalFile   = sprintf("%s/%s/%s/originals/%s%s.%s", $S3_ROOT, $AccountName, $Folder, $dirCharsFolder, $fileName, $fileExtension);
+			$cacheFolder    = sprintf("%s/%s/%s/cache/%s%dx%d", $S3_ROOT, $AccountName, $Folder, $dirCharsFolder, $cxDest, $cyDest);
+			$cacheFile      = sprintf("%s/%s.%s", $cacheFolder, $fileName, $fileExtension);
+			$cacheFileUrl   = sprintf("%s/%s", $S3_URL, $cacheFile);
 			
-			if (!file_exists($originalFile))
-				NotFound('File not found');
-		}
-			
-		$imageParts = getimagesize($originalFile);
-		$cxSrc      = $imageParts[0];
-		$cySrc      = $imageParts[1];
-		
-		if ($cxDest != $cxSrc || $cyDest != $cySrc)
-		{
-			$dirCharsFolder = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName($fileName) : "";
-			$cacheFolder = sprintf("%s/%s/%s/cache/%dx%d%s", $FILES_ROOT, $AccountName, $Folder, $cxDest, $cyDest, $dirCharsFolder);
-			$cacheFile   = sprintf("%s/%s.%s", $cacheFolder, $fileName, $fileExtension);
-			if (!file_exists($cacheFolder))
-				mkdir($cacheFolder, 0777, true);
-				
-			if (!file_exists($cacheFile))
+			if (!$s3client->doesObjectExist($S3_BUCKET, $cacheFile))
 			{
-				switch ($imageParts[2])
+				try
 				{
-					case IMAGETYPE_GIF:
-						$image     = imagecreatefromgif($originalFile);
+					$result = $s3client->getObject(array(
+						'Bucket'     => $S3_BUCKET,
+						'Key'        => $originalFile
+					));
+					$imageData = (string)$result['Body'];
+					
+					$imageParts = getimagesizefromstring($imageData);
+					$cxSrc      = $imageParts[0];
+					$cySrc      = $imageParts[1];
+					
+					if ($cxDest == $cxSrc && $cyDest == $cySrc)
+					{
+						$s3client->copyObject(array(
+							'Bucket'     => $S3_BUCKET,
+							'Key'        => $cacheFile,
+							'CopySource' => urlencode("{$S3_BUCKET}/{$originalFile}")
+						));
+					}
+					else
+					{
+						$image = imagecreatefromstring($imageData);
 						$destImage = ResampleImage($image, $imageParts[2], $cxDest, $cyDest);
-						imagegif($destImage, $cacheFile);
-						break;
-					case IMAGETYPE_JPEG:
-						$image     = imagecreatefromjpeg($originalFile);
-						$destImage = ResampleImage($image, $imageParts[2], $cxDest, $cyDest);
-						imagejpeg($destImage, $cacheFile);
-						break;
-					case IMAGETYPE_PNG:
-						$image     = imagecreatefrompng($originalFile);
-						$destImage = ResampleImage($image, $imageParts[2], $cxDest, $cyDest);
-						imagepng($destImage, $cacheFile);
-						break;
-					default:
-						NotFound('Unsupported image type');
+						
+						// See http://stackoverflow.com/questions/1206884/php-gd-how-to-get-imagedata-as-binary-string
+						ob_start();
+						switch ($imageParts[2])
+						{
+							case IMAGETYPE_GIF:
+								imagegif($destImage);
+								break;
+							case IMAGETYPE_JPEG:
+								imagejpeg($destImage);
+								break;
+							case IMAGETYPE_PNG:
+								imagepng($destImage);
+								break;
+							default:
+								NotFound(sprintf('Unsupported image type: %d', $imageParts[2]));
+						}
+						$destImageData = ob_get_contents();
+						ob_end_clean();
+						
+						$result = $s3client->putObject(array(
+							'Bucket'      => $S3_BUCKET,
+							'Key'         => $cacheFile,
+							'Body'        => $destImageData,
+							'ContentType' => image_type_to_mime_type($imageParts[2])
+						));
+					}
+					
+					$s3client->waitUntil('ObjectExists', array(
+						'Bucket' => $S3_BUCKET,
+						'Key'    => $cacheFile
+					));					
 				}
-				
-				imagedestroy($destImage);
+				catch (\Aws\S3\Exception\S3Exception $e)
+				{
+					NotFound($e->getMessage() . ' :' . $originalFile);
+				}
 			}
 			
-			header(sprintf('Content-type: %s', $imageParts['mime']));
-			readfile($cacheFile);
-			exit();
+			header("Location: " . $cacheFileUrl, true, 301);
+			exit();							
+		}
+		else
+		{
+			header("Location: " . $originalFileUrl, true, 301);
+			exit();			
 		}
 	}
+	else
+	{
+		$originalFile = sprintf("%s/%s/%s/originals/%s%s", $FILES_ROOT, $AccountName, $Folder, $dirCharsFolder, $File);
+		
+		if ($fileExtension == "pdf")
+		{
+			if (!file_exists($originalFile))
+				NotFound('File not found');
+						
+			header("Content-type: application/pdf");
+			readfile($originalFile);
+			exit();
+		}
+		if ($fileExtension == "swf")
+		{
+			if (!file_exists($originalFile))
+				NotFound('File not found');
+						
+			header("Content-type: application/x-shockwave-flash");
+			readfile($originalFile);
+			exit();
+		}
+				
+		if (preg_match('/\-(\d+)x(\d+)/i', $fileParts['filename'], $matches))
+		{
+			$cxDest         = intval($matches[1]);
+			$cyDest         = intval($matches[2]);
+			$fileName       = substr($fileParts['filename'], 0, strlen($fileParts['filename']) - strlen($matches[0]));
+			$dirCharsFolder = $FILES_DIR_CHARS > 0 ? GetFolderName($fileName) . "/" : "";
+			
+			$originalFile = sprintf("%s/%s/%s/originals/%s%s.%s", $FILES_ROOT, $AccountName, $Folder, $dirCharsFolder, $fileName, $fileExtension);
+			if (!file_exists($originalFile))
+			{
+				$fileName      = "default";
+				$fileExtension = "gif";
+				$dirCharsFolder = $FILES_DIR_CHARS > 0 ? GetFolderName($fileName) . "/" : "";
+				$originalFile = sprintf("%s/%s/%s/originals/%s%s.%s", $FILES_ROOT, $AccountName, $Folder, $dirCharsFolder, $fileName, $fileExtension);
+				
+				if (!file_exists($originalFile))
+					NotFound('File not found');
+			}
+				
+			$imageParts = getimagesize($originalFile);
+			$cxSrc      = $imageParts[0];
+			$cySrc      = $imageParts[1];
+			
+			if ($cxDest != $cxSrc || $cyDest != $cySrc)
+			{
+				$dirCharsFolder = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName($fileName) : "";
+				$cacheFolder = sprintf("%s/%s/%s/cache/%dx%d%s", $FILES_ROOT, $AccountName, $Folder, $cxDest, $cyDest, $dirCharsFolder);
+				$cacheFile   = sprintf("%s/%s.%s", $cacheFolder, $fileName, $fileExtension);
+				if (!file_exists($cacheFolder))
+					mkdir($cacheFolder, 0777, true);
+					
+				if (!file_exists($cacheFile))
+				{
+					switch ($imageParts[2])
+					{
+						case IMAGETYPE_GIF:
+							$image     = imagecreatefromgif($originalFile);
+							$destImage = ResampleImage($image, $imageParts[2], $cxDest, $cyDest);
+							imagegif($destImage, $cacheFile);
+							break;
+						case IMAGETYPE_JPEG:
+							$image     = imagecreatefromjpeg($originalFile);
+							$destImage = ResampleImage($image, $imageParts[2], $cxDest, $cyDest);
+							imagejpeg($destImage, $cacheFile);
+							break;
+						case IMAGETYPE_PNG:
+							$image     = imagecreatefrompng($originalFile);
+							$destImage = ResampleImage($image, $imageParts[2], $cxDest, $cyDest);
+							imagepng($destImage, $cacheFile);
+							break;
+						default:
+							NotFound('Unsupported image type');
+					}
+					
+					imagedestroy($destImage);
+				}
+				
+				header(sprintf('Content-type: %s', $imageParts['mime']));
+				readfile($cacheFile);
+				exit();
+			}
+		}
 
-	$imageParts = getimagesize($originalFile);
-	header(sprintf('Content-type: %s', $imageParts['mime']));
-	readfile($originalFile);
-	exit();
+		$imageParts = getimagesize($originalFile);
+		header(sprintf('Content-type: %s', $imageParts['mime']));
+		readfile($originalFile);
+		exit();
+	}
 	
 function GetFolderName($fileParts)
 {

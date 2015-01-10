@@ -7,8 +7,12 @@
 	$DB_DATABASE = "blobs";
 	$DB_USERNAME = "blobs";
 	$DB_PASSWORD = "mypassword";
+	$USE_S3      = True;
 	$AWS_KEY     = "myawskey";
 	$AWS_SECRET  = "myawssecret";	
+	$S3_BUCKET   = "mhodev";
+	$S3_ROOT     = "files";
+	$S3_URL      = "https://s3-us-west-1.amazonaws.com/mhodev";
 	
 	$FILES_ROOT      = "../files";
 	$FILES_DIR_CHARS = 2;
