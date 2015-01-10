@@ -1,12 +1,14 @@
 <?php
 
-	// Copyright (C) 2008 Teztech, Inc.
+	// Copyright (C) 2008-2015 Teztech, Inc.
 	// All Rights Reserved
 
-	$DB_SERVER   = "mysql.teztech.com";
+	$DB_SERVER   = "mysql.example.com";
 	$DB_DATABASE = "blobs";
 	$DB_USERNAME = "blobs";
-	$DB_PASSWORD = "blobx2323pwd";
+	$DB_PASSWORD = "mypassword";
+	$AWS_KEY     = "myawskey";
+	$AWS_SECRET  = "myawssecret";	
 	
 	$FILES_ROOT      = "../files";
 	$FILES_DIR_CHARS = 2;
