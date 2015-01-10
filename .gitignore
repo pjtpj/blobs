@@ -31,3 +31,5 @@ bin-release/
 MSSCCPRJ.SCC
 files/
 www/config.php
+composer.lock
+vendor/
