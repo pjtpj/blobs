@@ -12,8 +12,8 @@
 		Usage();
 
 	$command   = $argv[1];	
-	$bucket    = $argc >= 3 ? $argv[2] : "mhodev";
-	$filesRoot = $argc >= 4 ? $argv[3] : "files";
+	$bucket    = $argc >= 3 ? $argv[2] : $S3_BUCKET;
+	$filesRoot = $argc >= 4 ? $argv[3] : $S3_ROOT;
 	
 	if (($command != "copy" && $command != "testCopy") || 
 		!file_exists($filesRoot))
