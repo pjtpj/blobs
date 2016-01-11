@@ -159,8 +159,8 @@
 			$File = MapFileName($File);
 		
 		$originalFile = sprintf("%s/%s", $originalsFolder, $File);
-		if (file_exists($originalFile))
-			DeleteFiles($FILES_ROOT, $AccountName, $Folder, $File);
+		// if (file_exists($originalFile))
+		DeleteFiles($FILES_ROOT, $AccountName, $Folder, $File);
 
 		$srcFile = $_FILES['userfile']['tmp_name'];
 		
@@ -266,21 +266,22 @@ function DeleteFiles($filesRoot, $hostName, $folder, $file)
 	$dirCharsFolder  = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName(pathinfo($file)) : "";	
 	$originalFile    = sprintf("%s/%s/%s/originals%s/%s", $filesRoot, $hostName, $folder, $dirCharsFolder, $file);
 	
-	@unlink($originalFile);
-	
-	$cacheFolders = sprintf("%s/%s/%s/cache", $filesRoot, $hostName, $folder);
-	
-	if ($handle = @opendir($cacheFolders)) 
+	if (@unlink($originalFile))
 	{
-		while (false !== ($cacheFolder = readdir($handle))) 
+		$cacheFolders = sprintf("%s/%s/%s/cache", $filesRoot, $hostName, $folder);
+		
+		if ($handle = @opendir($cacheFolders)) 
 		{
-			if ($cacheFolder != "." && $cacheFolder != "..") 
+			while (false !== ($cacheFolder = readdir($handle))) 
 			{
-				$filePath = sprintf("%s/%s%s/%s", $cacheFolders, $cacheFolder, $dirCharsFolder, $file);
-				@unlink($filePath);
+				if ($cacheFolder != "." && $cacheFolder != "..") 
+				{
+					$filePath = sprintf("%s/%s%s/%s", $cacheFolders, $cacheFolder, $dirCharsFolder, $file);
+					@unlink($filePath);
+				}
 			}
+			closedir($handle);
 		}
-		closedir($handle);
 	}
 }
 

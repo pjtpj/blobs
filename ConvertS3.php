@@ -19,7 +19,7 @@
 		!file_exists($filesRoot))
 		Usage();
 		
-	$s3client = S3Client::factory(array('key' => $AWS_KEY, 'secret' => $AWS_SECRET));		
+	$s3client = S3Client::factory(array('key' => $AWS_KEY, 'secret' => $AWS_SECRET));
 	
 	if ($hostHandle = @opendir($filesRoot)) 
 	{
@@ -40,70 +40,27 @@
 							
 							echo "++> Processing originals in folder: $originalsFolder\n";
 							
-							if ($originalsHandle = @opendir($originalsFolder)) 
+							if ($FILES_DIR_CHARS > 0)
 							{
-								while (false !== ($subFolder = readdir($originalsHandle))) 
+								if ($originalsHandle = @opendir($originalsFolder)) 
 								{
-									if ($subFolder != "." && $subFolder != ".." && $subFolder != ".svn") 
+									while (false !== ($subFolder = readdir($originalsHandle))) 
 									{
-										$filesFolder = sprintf("%s/%s/%s/originals/%s", $filesRoot, $hostFolder, $folder, $subFolder);
-										
-										echo "++++> Processing files in sub-folder: $filesFolder\n";
-																				
-										if ($filesFolderHandle = @opendir($filesFolder)) 
+										if ($subFolder != "." && $subFolder != ".." && $subFolder != ".svn") 
 										{
-											while (false !== ($fileName = readdir($filesFolderHandle))) 
-											{
-												$srcPath = sprintf("%s/%s", $filesFolder, $fileName);
-																								
-												if (is_file($srcPath)) 
-												{
-													$copyFile = True;
-													try
-													{
-														$destHead = $s3client->headObject(array(
-															'Bucket'     => $bucket,
-															'Key'        => $srcPath
-														));
-														$srcLength = filesize($srcPath);
-														if ($srcLength == $destHead['ContentLength'])
-														{
-															$copyFile = False;
-															if ($command == "testCopy")
-															{
-																echo "--------> SKIPPING '$srcPath' - lengths are equal $srcLength\n";
-															}
-														}
-													}
-													catch (\Aws\S3\Exception\S3Exception $e)
-													{
-														// Copy file on error
-														if ($command == "testCopy")
-														{
-															echo "Error getting head for '$srcPath'\n";
-														}														
-													}
-												
-													echo "--------> Copying '$srcPath' to 'S3/$filesFolder'\n";
-													if ($copyFile)
-													{
-														if ($command == "copy")
-														{
-															$result = $s3client->putObject(array(
-																'Bucket'     => $bucket,
-																'Key'        => $srcPath,
-																'SourceFile' => $srcPath
-															));
-														}
-													}
-												}
-											}
-											closedir($filesFolderHandle);
+											$filesFolder = sprintf("%s/%s/%s/originals/%s", $filesRoot, $hostFolder, $folder, $subFolder);
+											
+											echo "++++> Processing files in sub-folder: $filesFolder\n";
+											ProcessFilesFolder($command, $s3client, $bucket, $filesFolder);																					
 										}
-									}
-								}								
-								closedir($originalsHandle);
+									}								
+									closedir($originalsHandle);
+								}							
 							}
+							else
+							{
+								ProcessFilesFolder($command, $s3client, $bucket, $originalsFolder);
+							}							
 						}
 					}
 					closedir($folderHandle);
@@ -121,6 +78,81 @@ function Usage()
 {
 	echo "USAGE: ConvertS3 copy|testCopy s3bucket filesRootDir\n";
 	exit();
+}
+
+function ProcessFilesFolder($command, $s3client, $bucket, $filesFolder)
+{
+	$folderFiles = array();
+	$s3Commands = array();
+	
+	if ($filesFolderHandle = @opendir($filesFolder)) 
+	{
+		while (false !== ($fileName = readdir($filesFolderHandle))) 
+		{
+			$srcPath = sprintf("%s/%s", $filesFolder, $fileName);															
+			if (is_file($srcPath)) 
+			{
+				$folderFiles[$srcPath] = True;
+				$s3Commands[] = $s3client->getCommand('HeadObject', array(
+						'Bucket'     => $bucket,
+						'Key'        => $srcPath
+				));				
+			}
+		}
+		closedir($filesFolderHandle);
+		
+		$copyFile = True;
+		$s3Results = array();
+		try
+		{
+			if (count($s3Commands))
+				$s3Results = $s3client->execute($s3Commands);
+		}
+		catch (Guzzle\Service\Exception\CommandTransferException $e)
+		{
+			echo "Error getting AWS head for '$filesFolder'\n";
+			$s3Results = $e->getAllCommands();
+		}
+		
+		foreach ($s3Results as $s3Result) 
+		{
+			if ($s3Result->getResponse()->isSuccessful())
+			{
+				//var_dump($s3Result->GetResponse()->GetInfo());
+				$srcPath = $s3Result['Key'];
+				$srcLength = filesize($srcPath);
+				$destLength = $s3Result->GetResponse()->GetInfo()['download_content_length'];
+				// echo sprintf("Key=%s srcLength=%d destLength=%d \n", $s3Result['Key'], $srcLength, $destLength);
+				if ($srcLength == $destLength)
+				{
+					$folderFiles[$srcPath] = False;
+					if ($command == "testCopy")
+					{
+						echo "--------> SKIPPING '$srcPath' - lengths are equal $srcLength\n";
+					}
+				}
+			}
+		}
+		
+		$s3Commands = array();
+		foreach ($folderFiles as $srcPath => $copyFile) 
+		{
+			if ($copyFile) 
+			{
+				echo "--------> Copying '$srcPath' to 'S3/$filesFolder'\n";
+				$s3Commands[] = $s3client->getCommand('PutObject', array(
+						'Bucket'     => $bucket,
+						'Key'        => $srcPath,
+						'SourceFile' => $srcPath
+				));
+			}
+		}
+		
+		if ($command == "copy")
+		{
+			$s3client->execute($s3Commands);
+		}		
+	}
 }
 
 ?>
