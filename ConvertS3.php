@@ -12,7 +12,7 @@
 		Usage();
 
 	$command     = $argv[1];
-	$region      = $argc >= 4 ? $argv[2] : 'us-east-1';
+	$region      = $argc >= 4 ? $argv[2] : $S3_REGION;
 	$bucket      = $argc >= 3 ? $argv[3] : $S3_BUCKET;
 	$filesRoot   = $argc >= 4 ? $argv[4] : $S3_ROOT;
 	$maxCommands = 100;

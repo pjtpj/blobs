@@ -31,7 +31,7 @@
 	
 	if ($USE_S3)
 	{
-		$s3client        = S3Client::factory(array('key' => $AWS_KEY, 'secret' => $AWS_SECRET));
+		$s3client        = S3Client::factory(array('key' => $AWS_KEY, 'secret' => $AWS_SECRET, 'region' => $S3_REGION));
 		$originalFile    = sprintf("%s/%s/%s/originals/%s%s", $S3_ROOT, $AccountName, $Folder, $dirCharsFolder, $File);
 		$originalFileUrl = sprintf("%s/%s", $S3_URL, $originalFile);
 		

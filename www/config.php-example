@@ -1,6 +1,6 @@
 <?php
 
-	// Copyright (C) 2008-2015 Teztech, Inc.
+	// Copyright (C) 2008-2016 Teztech, Inc.
 	// All Rights Reserved
 
 	$DB_SERVER   = "mysql.example.com";
@@ -9,7 +9,8 @@
 	$DB_PASSWORD = "mypassword";
 	$USE_S3      = True;
 	$AWS_KEY     = "myawskey";
-	$AWS_SECRET  = "myawssecret";	
+	$AWS_SECRET  = "myawssecret";
+	$S3_REGION   = 'us-east-1';
 	$S3_BUCKET   = "mhodev";
 	$S3_ROOT     = "files";
 	$S3_URL      = "https://s3-us-west-1.amazonaws.com/mhodev";
