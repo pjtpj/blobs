@@ -70,10 +70,12 @@ Blob server demo
 			closedir($dirCharsFoldersHandle);
 	?>
 	</table>
+</form>
 	
 	<?php endif; ?>
 	
 	<br /><br />
+	<?php if (isset($_SERVER['HTTP_USER_AGENT']) && preg_match("/(?i)msie|trident|edge/",$_SERVER['HTTP_USER_AGENT'])): ?>
 	<INPUT TYPE=BUTTON VALUE="Add Image" NAME="AddImage" OnClick="AddImage_OnClick()">
 	
     <div style="display: none">
@@ -82,6 +84,19 @@ Blob server demo
             width="0" height="0" visible="false">
         </object>
     </div>
+	<?php else: ?>
+
+<form action="post.php" method="post" enctype="multipart/form-data">
+	Select image to upload:
+	<input type="hidden" name="Password" value="password">
+	<input type="hidden" name="Action" value="Update">
+	<input type="hidden" name="Folder" value="<?php echo $Folder; ?>">
+	<input type="hidden" name="File" value="test2.jpg">
+	<input type="file" name="userfile" id="userfile">
+	<input type="submit" value="Upload Image" name="submit">
+</form>
+
+	<?php endif; ?>
     
 </body>
 

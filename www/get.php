@@ -37,14 +37,15 @@
 		
 		if (preg_match('/\-(\d+)x(\d+)/i', $fileParts['filename'], $matches))
 		{
-			$cxDest         = intval($matches[1]);
-			$cyDest         = intval($matches[2]);
-			$fileName       = substr($fileParts['filename'], 0, strlen($fileParts['filename']) - strlen($matches[0]));
-			$dirCharsFolder = $FILES_DIR_CHARS > 0 ? GetFolderName($fileName) . "/" : "";
-			$originalFile   = sprintf("%s/%s/%s/originals/%s%s.%s", $S3_ROOT, $AccountName, $Folder, $dirCharsFolder, $fileName, $fileExtension);
-			$cacheFolder    = sprintf("%s/%s/%s/cache/%s%dx%d", $S3_ROOT, $AccountName, $Folder, $dirCharsFolder, $cxDest, $cyDest);
-			$cacheFile      = sprintf("%s/%s.%s", $cacheFolder, $fileName, $fileExtension);
-			$cacheFileUrl   = sprintf("%s/%s", $S3_URL, $cacheFile);
+			$cxDest          = intval($matches[1]);
+			$cyDest          = intval($matches[2]);
+			$fileName        = substr($fileParts['filename'], 0, strlen($fileParts['filename']) - strlen($matches[0]));
+			$dirCharsFolder  = $FILES_DIR_CHARS > 0 ? GetFolderName($fileName) . "/" : "";
+			$dirCharsFolder2 = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName($fileName) : "";
+			$originalFile    = sprintf("%s/%s/%s/originals/%s%s.%s", $S3_ROOT, $AccountName, $Folder, $dirCharsFolder, $fileName, $fileExtension);
+			$cacheFolder     = sprintf("%s/%s/%s/cache/%dx%d%s", $S3_ROOT, $AccountName, $Folder, $cxDest, $cyDest, $dirCharsFolder2);
+			$cacheFile       = sprintf("%s/%s.%s", $cacheFolder, $fileName, $fileExtension);
+			$cacheFileUrl    = sprintf("%s/%s", $S3_URL, $cacheFile);
 			
 			if (!$s3client->doesObjectExist($S3_BUCKET, $cacheFile))
 			{
@@ -168,8 +169,8 @@
 			
 			if ($cxDest != $cxSrc || $cyDest != $cySrc)
 			{
-				$dirCharsFolder = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName($fileName) : "";
-				$cacheFolder = sprintf("%s/%s/%s/cache/%dx%d%s", $FILES_ROOT, $AccountName, $Folder, $cxDest, $cyDest, $dirCharsFolder);
+				$dirCharsFolder2 = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName($fileName) : "";
+				$cacheFolder = sprintf("%s/%s/%s/cache/%dx%d%s", $FILES_ROOT, $AccountName, $Folder, $cxDest, $cyDest, $dirCharsFolder2);
 				$cacheFile   = sprintf("%s/%s.%s", $cacheFolder, $fileName, $fileExtension);
 				if (!file_exists($cacheFolder))
 					mkdir($cacheFolder, 0777, true);

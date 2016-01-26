@@ -17,7 +17,7 @@
 	
 	$FILES_ROOT      = "../files";
 	$FILES_DIR_CHARS = 2;
-	$EXTENSIONS      = "jpg,jpeg,gif,png,bmp,pdf,swf"; // Don't use any spaces
+	$EXTENSIONS      = "jpg,gif,png,bmp,pdf,swf"; // Don't use any spaces - check GetMimeType in post.php
 	
 	$MySQL = @mysql_connect ($DB_SERVER, $DB_USERNAME, $DB_PASSWORD); // or die ('ERROR: Sorry cannot connect to database.');
 	@mysql_select_db($DB_DATABASE); // or die("ERROR: Sorry cannot select database.");

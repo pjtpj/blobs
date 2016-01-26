@@ -4,7 +4,10 @@
 	// All Rights Reserved
 	
 	require_once("config.php");
-	
+	require '../vendor/autoload.php';
+
+	use Aws\S3\S3Client;
+
 	$Action = isset($_REQUEST['Action']) ? $_REQUEST['Action'] : (isset($_REQUEST['Delete']) ? "Delete" : "");	
 	
 	if 
@@ -43,7 +46,9 @@
 	$AccountName = $user['AccountName'];
 	
 	$dirCharsFolder  = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName(pathinfo($File)) : "";	
-	$originalsFolder = sprintf("%s/%s/%s/originals%s", $FILES_ROOT, $AccountName, $Folder, $dirCharsFolder);
+	$originalsFolder = sprintf("%s/%s/%s/originals%s", $USE_S3 ? $S3_ROOT : $FILES_ROOT, $AccountName, $Folder, $dirCharsFolder);
+
+	$s3client = $USE_S3 ? S3Client::factory(array('key' => $AWS_KEY, 'secret' => $AWS_SECRET, 'region' => $S3_REGION)) : NULL;
 	
 	// Process Action field
 	
@@ -51,7 +56,7 @@
 	{
 		$File = MapFileName($File);
 		$originalFile = sprintf("%s/%s", $originalsFolder, $File);
-		if (!file_exists($originalFile))
+		if (($USE_S3 && !$s3client->doesObjectExist($S3_BUCKET, $originalFile)) || (!$USE_S3 && !file_exists($originalFile)))
 		{
 			printf("203 File '%s' does not exist", $originalFile);
 			exit();
@@ -67,17 +72,14 @@
 		// Delete the selected blob file and related cache files - this code is not specific to dcupload
 		
 		$File = MapFileName($File);
-		$originalFile = sprintf("%s/%s", $originalsFolder, $File);
-		if (!file_exists($originalFile))
+		if (!DeleteFiles($s3client, $AccountName, $Folder, $File))
 		{
-			printf("203 File '%s' does not exist", $originalFile);
+			printf("203 File '%s/%s' does not exist", $Folder, $File);
 			exit();
 		}
 		else
 		{
-			DeleteFiles($FILES_ROOT, $AccountName, $Folder, $File);
-			
-			printf("200 File '%s' was deleted", $originalFile);
+			printf("200 File was deleted");
 			exit();
 		}
 	}	
@@ -87,7 +89,7 @@
 		
 		$File = MapFileName($File);
 		$originalFile = sprintf("%s/%s", $originalsFolder, $File);
-		if (!file_exists($originalFile))
+		if (($USE_S3 && !$s3client->doesObjectExist($S3_BUCKET, $originalFile)) || (!$USE_S3 && !file_exists($originalFile)))
 		{
 			printf("203 File '%s' does not exist", $originalFile);
 			exit();
@@ -102,19 +104,35 @@
 			$NewFile = $_REQUEST['NewFile'];
 			$NewFile = MapFileName($NewFile);
 			$newDirCharsFolder  = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName(pathinfo($NewFile)) : "";	
-			$newOriginalsFolder = sprintf("%s/%s/%s/originals%s", $FILES_ROOT, $AccountName, $Folder, $newDirCharsFolder);
+			$newOriginalsFolder = sprintf("%s/%s/%s/originals%s", $USE_S3 ? $S3_ROOT : $FILES_ROOT, $AccountName, $Folder, $newDirCharsFolder);
 			$newOriginalFile = sprintf("%s/%s", $newOriginalsFolder, $NewFile);
 			
-			DeleteCacheFiles($FILES_ROOT, $AccountName, $Folder, $File);
-			
-			@mkdir($newOriginalsFolder, 0777, true);
-			
-			if (! @rename($originalFile, $newOriginalFile))
+			DeleteCacheFiles($s3client, $AccountName, $Folder, $File);
+
+			if ($USE_S3)
 			{
-				printf("205 Cannot rename '%s' as '%s'", $originalFile, $newOriginalFile);
-				exit();
+				$s3OriginalFile = sprintf("%s/%s", $S3_BUCKET, $originalFile);
+				$s3client->copyObject(array(
+					'Bucket'     => $S3_BUCKET,
+					'Key'        => $newOriginalFile,
+					'CopySource' => $s3OriginalFile
+				));
+				$s3client->deleteObject(array(
+					'Bucket'     => $S3_BUCKET,
+					'Key'        => $originalFile
+				));
 			}
-			
+			else
+			{
+				@mkdir($newOriginalsFolder, 0777, true);
+
+				if (!@rename($originalFile, $newOriginalFile))
+				{
+					printf("205 Cannot rename '%s' as '%s'", $originalFile, $newOriginalFile);
+					exit();
+				}
+			}
+
 			printf("200 File '%s' was renamed as '%s'", $originalFile, $newOriginalFile);
 			exit();
 		}
@@ -151,16 +169,20 @@
 			printf("203 Invalid file type '%s'", $fileExtension);
 			exit();
 		}
-		
-		// if (!file_exists($originalsFolder)) // file_exists very expensive on large folders
-		@mkdir($originalsFolder, 0777, true);
+
+		if ($USE_S3)
+		{
+			// if (!file_exists($originalsFolder)) // file_exists very expensive on large folders
+			@mkdir($originalsFolder, 0777, true);
+		}
 			
 		if ($fileExtension == 'bmp')
 			$File = MapFileName($File);
 		
 		$originalFile = sprintf("%s/%s", $originalsFolder, $File);
+		$originalFileType = GetMimeType($originalFile);
 		// if (file_exists($originalFile))
-		DeleteFiles($FILES_ROOT, $AccountName, $Folder, $File);
+		DeleteFiles($s3client, $AccountName, $Folder, $File);
 
 		$srcFile = $_FILES['userfile']['tmp_name'];
 		
@@ -173,23 +195,47 @@
 				// move_uploaded_file($srcFile, $originalFile);
 				exit();
 			}
-			if (! @imagepng($image, $originalFile))
+			$pngFile = $USE_S3 ? tempnam(sys_get_temp_dir(), 'blobs_post') : $originalFile;
+			if (! @imagepng($image, $pngFile))
 			{
-				print("203 Cannot save BMP '$srcFile' as PNG $originalFile");
+				print("203 Cannot save BMP '$srcFile' as PNG $pngFile");
 				exit();
+			}
+			if ($USE_S3)
+			{
+				$s3client->putObject(array(
+					'Bucket'      => $S3_BUCKET,
+					'SourceFile'  => $pngFile,
+					'Key'         => $originalFile,
+					'ContentType' => $originalFileType
+				));
+				@unlink($pngFile);
 			}
 		}
 		else
 		{
-			if (! @move_uploaded_file($srcFile, $originalFile))
+			if ($USE_S3)
 			{
-				$errMsg = $php_errormsg;
-				print("203 Cannot move file from '$srcFile' to '$originalFile'. The system error is: $errMsg");
-				exit();
+				$s3client->putObject(array(
+					'Bucket'      => $S3_BUCKET,
+					'SourceFile'  => $srcFile,
+					'Key'         => $originalFile,
+					'ContentType' => $originalFileType
+				));
+			}
+			else
+			{
+				if (!@move_uploaded_file($srcFile, $originalFile))
+				{
+					$errMsg = $php_errormsg;
+					print("203 Cannot move file from '$srcFile' to '$originalFile'. The system error is: $errMsg");
+					exit();
+				}
 			}
 		}
 	
 		// 200 Response is required by dcupload control to indicate success
+		//printf("200 The file '$srcFile' was successfully uploaded as '$originalFile' with MIME type '$originalFileType'.");
 		printf("200 The file was successfully uploaded.");
 		exit();
 	}
@@ -208,36 +254,103 @@
 		
 		set_time_limit(3600);
 		$fileCount = 0;
-		$originalsFolder = sprintf("%s/%s/%s/originals", $FILES_ROOT, $AccountName, $Folder);
-		
-		if ($handle1 = opendir($originalsFolder))
+		$originalsFolder = sprintf("%s/%s/%s/originals", $USE_S3 ? $S3_ROOT : $FILES_ROOT, $AccountName, $Folder);
+
+		if ($USE_S3)
 		{
-			while (false !== ($file1 = readdir($handle1)))
+			if ($FILES_DIR_CHARS > 0)
 			{
-				if ($file1 == "." || $file1 == "..")
-					continue;
-				
-				$folder1 = sprintf("%s/%s", $originalsFolder, $file1);
-				if (is_dir($folder1))
+				// See http://stackoverflow.com/questions/21138673/how-to-get-commonprefixes-from-an-amazon-s3-listobjects-iterator
+				//trace(sprintf("Listing files in originalsFolder: %s\r\n", $originalsFolder));
+				$folders1 = $s3client->getIterator(
+					'ListObjects',
+					array(
+						"Bucket" => $S3_BUCKET,
+						"Delimiter" => "/",
+						"Prefix" => "$originalsFolder/"  // Trailing slash is required
+					),
+					array(
+						'return_prefixes' => true,
+					)
+				);
+				foreach ($folders1 as $folder1)
 				{
-					if ($handle2 = opendir($folder1))
+					if (isset($folder1['Prefix']))
 					{
-						while (false !== ($file2 = readdir($handle2)))
+						//trace(sprintf("Listing files in prefixFolder: %s\r\n", $folder1['Prefix']));
+						$folders2 = $s3client->getIterator(
+							'ListObjects',
+							array(
+								"Bucket" => $S3_BUCKET,
+								"Delimiter" => "/",
+								"Prefix" => $folder1['Prefix']
+							)
+						);
+						foreach ($folders2 as $folder2)
 						{
-							// trace("file2 = $file2\r\n");
-						
-							if ($file2 == "." || $file2 == "..")
-								continue;
-								
-							echo "$file2\n";
-							$fileCount++;
+							if (isset($folder2['Key']))
+							{
+								//trace(sprintf("Found file: %s\r\n", $folder2['Key']));
+								echo basename($folder2['Key']) . "\n";
+								$fileCount++;
+							}
 						}
 					}
 				}
-				else
+			}
+			else
+			{
+				$folders1 = $s3client->getIterator(
+					'ListObjects',
+					array(
+						"Bucket" => $S3_BUCKET,
+						"Delimiter" => "/",
+						"Prefix" => "$originalsFolder/"  // Trailing slash is required
+					)
+				);
+				foreach ($folders1 as $folder1)
 				{
-					echo "$file1\n";
-					$fileCount++;
+					if (isset($folder1['Key']))
+					{
+						echo basename($folder1['Key']) . "\n";
+						$fileCount++;
+					}
+				}
+			}
+		}
+		else
+		{
+			if ($handle1 = opendir($originalsFolder))
+			{
+				while (false !== ($file1 = readdir($handle1)))
+				{
+					if ($file1 == "." || $file1 == "..")
+						continue;
+
+					$folder1 = sprintf("%s/%s", $originalsFolder, $file1);
+					if (is_dir($folder1))
+					{
+						if ($handle2 = opendir($folder1))
+						{
+							while (false !== ($file2 = readdir($handle2)))
+							{
+								// trace("file2 = $file2\r\n");
+								if ($file2 == "." || $file2 == "..")
+									continue;
+
+								echo "$file2\n";
+								$fileCount++;
+							}
+						}
+					}
+					else
+					{
+						if (isset($folder1['Key']))
+						{
+							echo $folder1['Key'] . "\n";
+							$fileCount++;
+						}
+					}
 				}
 			}
 		}
@@ -259,22 +372,131 @@ function GetFolderName($fileParts)
 	return strtolower(substr($temp, -$FILES_DIR_CHARS));
 }
 
-function DeleteFiles($filesRoot, $hostName, $folder, $file)
+function DeleteFiles($s3client, $hostName, $folder, $file)
 {
+	global $USE_S3;
+	global $S3_ROOT;
+	global $S3_BUCKET;
+	global $FILES_ROOT;
 	global $FILES_DIR_CHARS;
 	
-	$dirCharsFolder  = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName(pathinfo($file)) : "";	
-	$originalFile    = sprintf("%s/%s/%s/originals%s/%s", $filesRoot, $hostName, $folder, $dirCharsFolder, $file);
-	
-	if (@unlink($originalFile))
+	$dirCharsFolder  = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName(pathinfo($file)) : "";
+	$originalFile    = sprintf("%s/%s/%s/originals%s/%s", $USE_S3 ? $S3_ROOT : $FILES_ROOT, $hostName, $folder, $dirCharsFolder, $file);
+	$cacheFolders    = sprintf("%s/%s/%s/cache", $USE_S3 ? $S3_ROOT : $FILES_ROOT, $hostName, $folder);
+
+	if ($USE_S3)
 	{
-		$cacheFolders = sprintf("%s/%s/%s/cache", $filesRoot, $hostName, $folder);
-		
-		if ($handle = @opendir($cacheFolders)) 
+		// S3 doesn't seem to have a return code for successful file deletion
+		if ($s3client->doesObjectExist($S3_BUCKET, $originalFile))
 		{
-			while (false !== ($cacheFolder = readdir($handle))) 
+			$dirCharsFolder2 = $FILES_DIR_CHARS > 0 ? GetFolderName(pathinfo($file)) . "/" : "";
+
+			$s3client->deleteObject(array(
+				'Bucket'     => $S3_BUCKET,
+				'Key'        => $originalFile
+			));
+
+			$cacheFoldersI = $s3client->getIterator(
+				'ListObjects',
+				array(
+					"Bucket"    => $S3_BUCKET,
+					"Delimiter" => "/",
+					"Prefix"    => $cacheFolders . "/"  // Trailing slash is required
+				),
+				array(
+					'return_prefixes' => true,
+				)
+			);
+			foreach ($cacheFoldersI as $cacheFolderI)
 			{
-				if ($cacheFolder != "." && $cacheFolder != "..") 
+				if (isset($cacheFolderI['Prefix']))
+				{
+					$filePath = sprintf("%s%s%s", $cacheFolderI['Prefix'], $dirCharsFolder2, $file);
+					$s3client->deleteObject(array(
+						'Bucket' => $S3_BUCKET,
+						'Key' => $filePath
+					));
+				}
+			}
+
+			return TRUE;
+		}
+		else
+		{
+			return FALSE;
+		}
+	}
+	else
+	{
+		if (@unlink($originalFile))
+		{
+			if ($handle = @opendir($cacheFolders))
+			{
+				while (false !== ($cacheFolder = readdir($handle)))
+				{
+					if ($cacheFolder != "." && $cacheFolder != "..")
+					{
+						$filePath = sprintf("%s/%s%s/%s", $cacheFolders, $cacheFolder, $dirCharsFolder, $file);
+						@unlink($filePath);
+					}
+				}
+				closedir($handle);
+			}
+
+			return TRUE;
+		}
+		else
+		{
+			return FALSE;
+		}
+	}
+}
+
+function DeleteCacheFiles($s3client, $hostName, $folder, $file)
+{
+	global $USE_S3;
+	global $S3_ROOT;
+	global $S3_BUCKET;
+	global $FILES_ROOT;
+	global $FILES_DIR_CHARS;
+
+	$dirCharsFolder  = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName(pathinfo($file)) : "";
+	$cacheFolders    = sprintf("%s/%s/%s/cache", $USE_S3 ? $S3_ROOT : $FILES_ROOT, $hostName, $folder);
+
+	if ($USE_S3)
+	{
+		$dirCharsFolder2 = $FILES_DIR_CHARS > 0 ? GetFolderName(pathinfo($file)) . "/" : "";
+
+		$cacheFoldersI = $s3client->getIterator(
+			'ListObjects',
+			array(
+				"Bucket"    => $S3_BUCKET,
+				"Delimiter" => "/",
+				"Prefix"    => $cacheFolders . "/"  // Trailing slash is required
+			),
+			array(
+				'return_prefixes' => true,
+			)
+		);
+		foreach ($cacheFoldersI as $cacheFolderI)
+		{
+			if (isset($cacheFolderI['Prefix']))
+			{
+				$filePath = sprintf("%s%s%s", $cacheFolderI['Prefix'], $dirCharsFolder2, $file);
+				$s3client->deleteObject(array(
+					'Bucket' => $S3_BUCKET,
+					'Key' => $filePath
+				));
+			}
+		}
+	}
+	else
+	{
+		if ($handle = @opendir($cacheFolders))
+		{
+			while (false !== ($cacheFolder = readdir($handle)))
+			{
+				if ($cacheFolder != "." && $cacheFolder != "..")
 				{
 					$filePath = sprintf("%s/%s%s/%s", $cacheFolders, $cacheFolder, $dirCharsFolder, $file);
 					@unlink($filePath);
@@ -282,29 +504,6 @@ function DeleteFiles($filesRoot, $hostName, $folder, $file)
 			}
 			closedir($handle);
 		}
-	}
-}
-
-function DeleteCacheFiles($filesRoot, $hostName, $folder, $file)
-{
-	global $FILES_DIR_CHARS;
-	
-	$dirCharsFolder  = $FILES_DIR_CHARS > 0 ? "/" . GetFolderName(pathinfo($file)) : "";	
-	$originalFile    = sprintf("%s/%s/%s/originals%s/%s", $filesRoot, $hostName, $folder, $dirCharsFolder, $file);
-	
-	$cacheFolders = sprintf("%s/%s/%s/cache", $filesRoot, $hostName, $folder);
-	
-	if ($handle = @opendir($cacheFolders)) 
-	{
-		while (false !== ($cacheFolder = readdir($handle))) 
-		{
-			if ($cacheFolder != "." && $cacheFolder != "..") 
-			{
-				$filePath = sprintf("%s/%s%s/%s", $cacheFolders, $cacheFolder, $dirCharsFolder, $file);
-				@unlink($filePath);
-			}
-		}
-		closedir($handle);
 	}
 }
 
@@ -405,6 +604,29 @@ function imagecreatefrombmp($p_sFile)
 	return $image; 
 }
 
+function GetMimeType($filename)
+{
+	$fileParts     = pathinfo($filename);
+	$fileExtension = strtolower($fileParts['extension']);
+
+	switch ($fileExtension)
+	{
+		case "gif":
+			return "image/gif";
+		case "jpg":
+			return "image/jpeg";
+		case "bmp":
+		case "png":
+			return "image/png";
+		case "pdf":
+			return "application/pdf";
+		case "swf":
+			return "application/x-shockwave-flash";
+		default:
+			return NULL;
+	}
+}
+
 $TraceFile = NULL;
 
 function trace($msg)
@@ -426,11 +648,21 @@ function trace($msg)
 
 function traceClose()
 {
-	if ($TraceFile == NULL)
+	global $TraceFile;
+
+	if ($TraceFile != NULL)
 	{
 		fclose($TraceFile);
 		$TraceFile = NULL;
 	}
+}
+
+function var_dump_ret($mixed = null) {
+	ob_start();
+	var_dump($mixed);
+	$content = ob_get_contents();
+	ob_end_clean();
+	return $content;
 }
 
 ?>
