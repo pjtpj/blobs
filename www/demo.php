@@ -7,6 +7,14 @@
 	
 	$HostName = $_SERVER['HTTP_HOST'];
 	$Folder   = isset($_REQUEST['Folder']) ? $_REQUEST['Folder'] : 'folder1';
+
+	$sql    = "SELECT AccountName FROM Accounts, AccountHosts WHERE HostName = '%s' AND Accounts.AccountID = AccountHosts.AccountID";
+	$query  = sprintf($sql, mysql_real_escape_string($HostName));
+	$result = mysql_query($query) or die( "ERROR: Cannot query database." );
+	if (mysql_num_rows($result) != 1)
+		NotFound(sprintf("Host '%s' not found", $HostName));
+	$user = mysql_fetch_array($result, MYSQL_ASSOC);
+	$AccountName = $user['AccountName'];
 	
 	$ErrorMessage = '';
 ?>
@@ -31,7 +39,7 @@ Blob server demo
 	
 	<table border="1" cellpadding="0" cellspacing="0">
 	<?php 
-		$dirCharsFoldersPath   = $FILES_DIR_CHARS > 0 ? sprintf("%s/%s/%s/originals", $FILES_ROOT, $HostName, $Folder) : NULL;
+		$dirCharsFoldersPath   = $FILES_DIR_CHARS > 0 ? sprintf("%s/%s/%s/originals", $FILES_ROOT, $AccountName, $Folder) : NULL;
 		$dirCharsFoldersHandle = $FILES_DIR_CHARS > 0 ? opendir($dirCharsFoldersPath) : FALSE;
 		
 		while (!$dirCharsFoldersHandle || false !== ($dirCharsFolder = readdir($dirCharsFoldersHandle)))
@@ -40,7 +48,7 @@ Blob server demo
 				continue;
 		
 			$dirCharsFolder  = $FILES_DIR_CHARS > 0 ? "/" . $dirCharsFolder : "";	
-			$originalsFolder = sprintf("%s/%s/%s/originals%s", $FILES_ROOT, $HostName, $Folder, $dirCharsFolder);
+			$originalsFolder = sprintf("%s/%s/%s/originals%s", $FILES_ROOT, $AccountName, $Folder, $dirCharsFolder);
 		
 			if ($handle = opendir($originalsFolder)) 
 			{
@@ -55,7 +63,7 @@ Blob server demo
 	<tr>
 		<td><img src='<?php printf("/get.php?Folder=%s&File=%s", $Folder, $fileName); ?>' /></td>
 		<td><?php echo $imageEntry; ?></td>
-		<td><a href='<?php printf("/post.php?Password=password&Action=Delete&Folder=%s&File=%s", $Folder, $imageEntry); ?>'>Delete</a></td>
+		<td><a href='<?php printf("/post.php?Password=%s&Action=Delete&Folder=%s&File=%s", $BLOB_DEMO_PASSWORD, $Folder, $imageEntry); ?>'>Delete</a></td>
 	</tr>
 	<?php
 				}
@@ -88,7 +96,7 @@ Blob server demo
 
 <form action="post.php" method="post" enctype="multipart/form-data">
 	Select image to upload:
-	<input type="hidden" name="Password" value="password">
+	<input type="hidden" name="Password" value="<?php echo $BLOB_DEMO_PASSWORD; ?>">
 	<input type="hidden" name="Action" value="Update">
 	<input type="hidden" name="Folder" value="<?php echo $Folder; ?>">
 	<input type="hidden" name="File" value="test2.jpg">
@@ -107,7 +115,7 @@ function AddImage_OnClick()
 	Demo.dcuctl.DesignWidth = 255;
 	Demo.dcuctl.DesignHeight = 160;
 	Demo.dcuctl.CameraType = 4; // 4 = Computer Folder
-	Demo.dcuctl.UploadImageURL = '<?php echo "http://$HostName/post.php?Password=password&Action=Update&Folder=$Folder&File=test.jpg"; ?>';
+	Demo.dcuctl.UploadImageURL = '<?php echo "http://$HostName/post.php?Password=$BLOB_DEMO_PASSWORD&Action=Update&Folder=$Folder&File=test.jpg"; ?>';
 	Demo.dcuctl.GetImage(); // This call blocks until the Get Image dialog is closed
 	Demo.submit();          // The call to submit causes the page to be refreshed
 }
